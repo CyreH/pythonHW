@@ -1,1 +1,199 @@
+# pythonHW
+##Таблица статистики
+```py
+import csv
+import openpyxl
+from openpyxl.styles import Font, Border, Side
 
+currency_to_rub = {
+    "AZN": 35.68,
+    "BYR": 23.91,
+    "EUR": 59.90,
+    "GEL": 21.74,
+    "KGS": 0.76,
+    "KZT": 0.13,
+    "RUR": 1,
+    "UAH": 1.64,
+    "USD": 60.66,
+    "UZS": 0.0055,
+}
+
+
+class Vacancy:
+    def __init__(self, vac):
+        self.name = vac['name']
+        self.salary_from = vac['salary_from']
+        self.salary_to = vac['salary_to']
+        self.salary_currency = vac['salary_currency']
+        self.area_name = vac['area_name']
+        self.published_at = vac['published_at']
+        self.year = self.published_at[:4]
+        self.salary = (float(self.salary_from) + float(self.salary_to)) / 2 * currency_to_rub[self.salary_currency]
+
+
+class DataSet:
+    def __init__(self, f_name):
+        self.file_name = f_name
+        self.vacancies_objects = [Vacancy(obj) for obj in self.CSV_parser(self.file_name)]
+        self.vac_amount = len(self.vacancies_objects)
+        self.sal_by_years = {}
+        self.sal_by_years_for_prof = {}
+        self.sal_by_city = {}
+        self.amount_by_years = {}
+        self.amount_prof_by_years = {}
+        self.amount_by_city = {}
+
+    @staticmethod
+    def CSV_parser(csv_file):
+        file = open(csv_file, encoding='utf-8-sig')
+        csv_reader = csv.reader(file)
+        titles = next(csv_reader)
+        vacancies = [dict(zip(titles, x)) for x in csv_reader if '' not in x and len(x) == len(titles)]
+        return vacancies
+
+    @staticmethod
+    def year_counter(sal, amount):
+        for key in sal:
+            sal[key] = int(sal[key] / amount[key]) if amount[key] != 0 else 0
+
+    def city_counter(self, sal, amount):
+        lst = []
+        for key in sal:
+            sal[key] = int(sal[key] / amount[key]) if amount[key] != 0 else 0
+            amount[key] = round(amount[key] / self.vac_amount, 4) if self.vac_amount != 0 else 0
+            if amount[key] < 0.01:
+                lst.append(key)
+        for key in lst:
+            del sal[key]
+            del amount[key]
+
+    def make(self, prof_name):
+        for vac in self.vacancies_objects:
+            city = vac.area_name
+            year = int(vac.year)
+            if city not in self.sal_by_city:
+                self.sal_by_city[city] = 0
+                self.amount_by_city[city] = 0
+            if year not in self.sal_by_years:
+                self.sal_by_years[year] = 0
+                self.amount_by_years[year] = 0
+                self.sal_by_years_for_prof[year] = 0
+                self.amount_prof_by_years[year] = 0
+            if vac.name.find(prof_name) >= 0:
+                self.sal_by_years_for_prof[year] += vac.salary
+                self.amount_prof_by_years[year] += 1
+
+            self.sal_by_city[city] += vac.salary
+            self.amount_by_city[city] += 1
+            self.sal_by_years[year] += vac.salary
+            self.amount_by_years[year] += 1
+
+        self.year_counter(self.sal_by_years, self.amount_by_years)
+        self.year_counter(self.sal_by_years_for_prof, self.amount_prof_by_years)
+        self.city_counter(self.sal_by_city, self.amount_by_city)
+
+        self.sal_by_city = dict(sorted(self.sal_by_city.items(), key=lambda val: val[1], reverse=True)[:10])
+        self.amount_by_city = dict(sorted(self.amount_by_city.items(), key=lambda val: val[1], reverse=True)[:10])
+
+
+class Report:
+    def __init__(self, f_name, prof_name):
+        self.f_name = f_name
+        self.prof_name = prof_name
+        self.data_set = DataSet(self.f_name)
+        self.data_set.make(self.prof_name)
+        self.workbook = openpyxl.Workbook()
+
+    def generate_excel(self):
+        ws1 = self.workbook.active
+        ws1.title = 'Статистика по годам'
+        ws2 = self.workbook.create_sheet('Статистика по городам')
+
+        f = Font(bold=True)
+        sd = Side(border_style='thin', color='FF000000')
+        b = Border(left=sd, right=sd, top=sd, bottom=sd)
+
+        ws1['A1'] = 'Год'
+        ws1['B1'] = 'Средняя зарплата'
+        ws1['C1'] = 'Количество вакансий'
+        ws1['D1'] = f'Средняя зарплата - {self.prof_name}'
+        ws1['E1'] = f'Количество вакансий - {self.prof_name}'
+
+        ws2['A1'] = ws2['D1'] = 'Город'
+        ws2['B1'] = 'Уровень зарплат'
+        ws2['E1'] = 'Доля вакансий'
+
+        self.create_values(self.data_set.sal_by_years, ws1, 'A')
+        self.create_values(self.data_set.sal_by_years.values(), ws1, 'B')
+        self.create_values(self.data_set.amount_by_years.values(), ws1, 'C')
+        self.create_values(self.data_set.sal_by_years_for_prof.values(), ws1, 'D')
+        self.create_values(self.data_set.amount_prof_by_years.values(), ws1, 'E')
+        self.create_values(self.data_set.sal_by_city, ws2, 'A')
+        self.create_values(self.data_set.sal_by_city.values(), ws2, 'B')
+        self.create_values(self.data_set.amount_by_city, ws2, 'D')
+        self.create_values(self.data_set.amount_by_city.values(), ws2, 'E')
+
+        row1 = ws1['1']
+        row1_2 = ws2['1']
+        col_e = ws2['E2':'E11']
+        for r in row1:
+            r.font = f
+        for r in row1_2:
+            r.font = f
+        for r in col_e:
+            for s in r:
+                s.number_format = '0.00%'
+        for r in ws1:
+            for s in r:
+                s.border = b
+        for r in ws2:
+            for s in r:
+                if s.value:
+                    s.border = b
+        self.correct_rows(ws1)
+        self.correct_rows(ws2)
+        self.workbook.save('rep.xlsx')
+
+    @staticmethod
+    def correct_rows(ws):
+        dims = {}
+        for row in ws.rows:
+            for cell in row:
+                if cell.value:
+                    dims[cell.column_letter] = max((dims.get(cell.column_letter, 0), len(str(cell.value)) + 1))
+        for col, value in dims.items():
+            ws.column_dimensions[col].width = value
+
+    @staticmethod
+    def create_values(val, cell, letter):
+        for i, year in enumerate(val, start=2):
+            n = f'{letter}{i}'
+            cell[n] = year
+
+
+class Input:
+    def __init__(self):
+        # self.f_name = input('Введите название файла: ')
+        # self.prof_name = input('Введите название профессии: ')
+        self.f_name = 'vac.csv'
+        self.prof_name = 'аналитик'
+        self.data_set = DataSet(self.f_name)
+        self.data_set.make(self.prof_name)
+        self.report = Report(self.f_name, self.prof_name)
+
+    def print(self):
+        print('Динамика уровня зарплат по годам:', self.data_set.sal_by_years)
+        print('Динамика количества вакансий по годам:', self.data_set.amount_by_years)
+        print('Динамика уровня зарплат по годам для выбранной профессии:', self.data_set.sal_by_years_for_prof)
+        print('Динамика количества вакансий по годам для выбранной профессии:', self.data_set.amount_prof_by_years)
+        print('Уровень зарплат по городам (в порядке убывания):', self.data_set.sal_by_city)
+        print('Доля вакансий по городам (в порядке убывания):', self.data_set.amount_by_city)
+
+
+x = Input()
+x.report.generate_excel()
+
+```
+![image](https://user-images.githubusercontent.com/102403656/202449482-c100b562-180c-4778-9c92-bbce4890cbd9.png)
+![image](https://user-images.githubusercontent.com/102403656/202449520-91a3c5cd-6971-4af4-a97a-6fbac90e321e.png)
+![image](https://user-images.githubusercontent.com/102403656/202449536-5661c17e-b775-472a-bf4f-e364b22bb293.png)
