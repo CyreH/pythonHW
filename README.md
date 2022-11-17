@@ -194,3 +194,6 @@ x = Input()
 x.report.generate_excel()
 
 ```
+![image](https://user-images.githubusercontent.com/102403656/202449482-c100b562-180c-4778-9c92-bbce4890cbd9.png)
+![image](https://user-images.githubusercontent.com/102403656/202449520-91a3c5cd-6971-4af4-a97a-6fbac90e321e.png)
+![image](https://user-images.githubusercontent.com/102403656/202449536-5661c17e-b775-472a-bf4f-e364b22bb293.png)
